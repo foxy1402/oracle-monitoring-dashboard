@@ -44,6 +44,14 @@ class MonitorHandler(BaseHTTPRequestHandler):
         metrics = {}
         
         try:
+            # System information (initialize early so it's always available)
+            metrics['system'] = {
+                'hostname': html.escape(socket.gethostname()),
+                'platform': html.escape(self.get_os_info()),
+                'kernel': html.escape(os.uname().release),
+                'architecture': html.escape(os.uname().machine)
+            }
+            
             # System uptime
             uptime_seconds = time.time() - psutil.boot_time()
             metrics['uptime'] = self.format_uptime(uptime_seconds)
@@ -146,14 +154,6 @@ class MonitorHandler(BaseHTTPRequestHandler):
             
             processes.sort(key=lambda x: x['cpu_percent'], reverse=True)
             metrics['top_processes'] = processes[:10]
-            
-            # System information
-            metrics['system'] = {
-                'hostname': html.escape(socket.gethostname()),
-                'platform': html.escape(self.get_os_info()),
-                'kernel': html.escape(os.uname().release),
-                'architecture': html.escape(os.uname().machine)
-            }
             
             # WireGuard status (if installed)
             metrics['wireguard'] = self.get_wireguard_status()
@@ -690,6 +690,12 @@ class MonitorHandler(BaseHTTPRequestHandler):
         
         function renderDashboard(data) {
             const content = document.getElementById('dashboard-content');
+            
+            // Check if data has an error or missing system info
+            if (data.error || !data.system) {
+                content.innerHTML = `<div class="alert">Error loading system metrics: ${data.error || 'Missing system data'}</div>`;
+                return;
+            }
             
             let html = '<div class="grid">';
             
