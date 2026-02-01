@@ -99,14 +99,18 @@ class MonitorHandler(BaseHTTPRequestHandler):
             metrics['disk'] = disk_usage
             
             # Disk I/O
-            disk_io = psutil.disk_io_counters()
-            if disk_io:
-                metrics['disk_io'] = {
-                    'read_bytes': self.format_bytes(disk_io.read_bytes),
-                    'write_bytes': self.format_bytes(disk_io.write_bytes),
-                    'read_count': disk_io.read_count,
-                    'write_count': disk_io.write_count
-                }
+            try:
+                disk_io = psutil.disk_io_counters()
+                if disk_io:
+                    metrics['disk_io'] = {
+                        'read_bytes': self.format_bytes(disk_io.read_bytes),
+                        'write_bytes': self.format_bytes(disk_io.write_bytes),
+                        'read_count': disk_io.read_count,
+                        'write_count': disk_io.write_count
+                    }
+            except Exception as e:
+                # Skip disk I/O metrics if parsing fails
+                metrics['disk_io'] = None
             
             # Network metrics
             net_io = psutil.net_io_counters()
