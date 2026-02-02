@@ -277,16 +277,36 @@ sudo journalctl -u oracle-monitor -n 50
 
 ### Update the Dashboard
 
-To update to a new version:
+#### Easy Update (Recommended)
+
+If you installed from the GitHub repository, simply run the update script:
 
 ```bash
-# Stop the service
-sudo systemctl stop oracle-monitor
+cd ~/oracle-monitoring-dashboard
+sudo ./update.sh
+```
 
-# Replace the Python file
+The script automatically:
+- ✅ Pulls latest code from GitHub
+- ✅ Copies files to installation directory
+- ✅ Restarts the service
+- ✅ Verifies everything is working
+
+#### Manual Update
+
+To update manually:
+
+```bash
+# Navigate to repository
+cd ~/oracle-monitoring-dashboard
+
+# Pull latest changes
+git pull
+
+# Copy updated file
 sudo cp monitor-dashboard.py /opt/oracle-monitor/
 
-# Restart the service
+# Restart service
 sudo systemctl restart oracle-monitor
 ```
 
