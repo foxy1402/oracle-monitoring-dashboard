@@ -188,8 +188,8 @@ class MonitorHandler(BaseHTTPRequestHandler):
                     if line.startswith('PRETTY_NAME='):
                         return line.split('=')[1].strip().strip('"')
         except Exception:
-            return 'Unknown'
-        return 'Oracle Linux'
+            pass
+        return 'Unknown Linux'
     
     def get_wireguard_status(self):
         """Get WireGuard VPN status"""
@@ -254,7 +254,7 @@ class MonitorHandler(BaseHTTPRequestHandler):
     
     def get_service_status(self):
         """Get status of important services"""
-        services = ['sshd', 'firewalld', 'wg-quick@wg0']
+        services = ['sshd', 'wg-quick@wg0']
         status = {}
         
         for service in services:
@@ -265,23 +265,64 @@ class MonitorHandler(BaseHTTPRequestHandler):
             except Exception:
                 status[service] = 'unknown'
         
-        return status
-    
-    def get_firewall_status(self):
-        """Get firewall information"""
-        fw_status = {'active': False, 'rules': []}
-        
+        # Check firewall service (firewalld OR ufw)
         try:
             result = subprocess.run(['systemctl', 'is-active', 'firewalld'],
                                   capture_output=True, text=True, timeout=5)
-            fw_status['active'] = result.stdout.strip() == 'active'
-            
-            if fw_status['active']:
-                result = subprocess.run(['firewall-cmd', '--list-ports'],
-                                      capture_output=True, text=True, timeout=5)
-                if result.returncode == 0:
-                    ports = result.stdout.strip().split()
-                    fw_status['open_ports'] = ports
+            if result.stdout.strip() == 'active':
+                status['firewall'] = 'active (firewalld)'
+            else:
+                # Check for UFW (Ubuntu)
+                result_ufw = subprocess.run(['systemctl', 'is-active', 'ufw'],
+                                          capture_output=True, text=True, timeout=5)
+                if result_ufw.stdout.strip() == 'active':
+                    status['firewall'] = 'active (ufw)'
+                else:
+                    status['firewall'] = 'inactive'
+        except Exception:
+            status['firewall'] = 'unknown'
+        
+        return status
+    
+    def get_firewall_status(self):
+        """Get firewall information - supports both firewalld and UFW"""
+        fw_status = {'active': False, 'rules': [], 'type': 'none'}
+        
+        try:
+            # Check for firewalld (Oracle Linux, RHEL, CentOS)
+            result = subprocess.run(['systemctl', 'is-active', 'firewalld'],
+                                  capture_output=True, text=True, timeout=5)
+            if result.stdout.strip() == 'active':
+                fw_status['active'] = True
+                fw_status['type'] = 'firewalld'
+                try:
+                    result = subprocess.run(['firewall-cmd', '--list-ports'],
+                                          capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0:
+                        ports = result.stdout.strip().split()
+                        fw_status['open_ports'] = ports
+                except Exception:
+                    pass
+            else:
+                # Check for UFW (Ubuntu, Debian)
+                result_ufw = subprocess.run(['systemctl', 'is-active', 'ufw'],
+                                          capture_output=True, text=True, timeout=5)
+                if result_ufw.stdout.strip() == 'active':
+                    fw_status['active'] = True
+                    fw_status['type'] = 'ufw'
+                    try:
+                        # Get UFW status and rules
+                        result_status = subprocess.run(['ufw', 'status'],
+                                                     capture_output=True, text=True, timeout=5)
+                        if result_status.returncode == 0:
+                            # Parse UFW rules for open ports
+                            open_ports = []
+                            for line in result_status.stdout.split('\n'):
+                                if 'ALLOW' in line and '80' in line:
+                                    open_ports.append('80/tcp')
+                            fw_status['open_ports'] = open_ports
+                    except Exception:
+                        pass
         except Exception:
             pass
         
