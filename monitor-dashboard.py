@@ -11,10 +11,20 @@ import time
 import socket
 from datetime import datetime, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
 import os
 import html
+import signal
+import sys
+
+# Create ThreadingHTTPServer for concurrent requests (Python 3.7+ compatibility)
+class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
 
 class MonitorHandler(BaseHTTPRequestHandler):
+    
+    timeout = 10
     
     def log_message(self, format, *args):
         """Suppress default logging"""
@@ -57,7 +67,7 @@ class MonitorHandler(BaseHTTPRequestHandler):
             metrics['uptime'] = self.format_uptime(uptime_seconds)
             
             # CPU metrics
-            cpu_percent = psutil.cpu_percent(interval=0.5, percpu=True)
+            cpu_percent = psutil.cpu_percent(interval=0.1, percpu=True)
             metrics['cpu'] = {
                 'overall': sum(cpu_percent) / len(cpu_percent) if cpu_percent else 0,
                 'per_core': cpu_percent,
@@ -1054,11 +1064,26 @@ class MonitorHandler(BaseHTTPRequestHandler):
 </html>'''
 
 def run_server(port=80):
+    server = None
+    
+    def signal_handler(sig, frame):
+        print('\nShutting down server...')
+        if server:
+            server.shutdown()
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
     try:
-        server = HTTPServer(('0.0.0.0', port), MonitorHandler)
+        # Use ThreadingHTTPServer for concurrent request handling
+        server = ThreadingHTTPServer(('0.0.0.0', port), MonitorHandler)
+        server.timeout = 10
+        server.allow_reuse_address = True
+        
         print(f'Oracle Instance Monitoring Dashboard running on port {port}')
         print(f'Access at: http://<your-instance-ip>')
-        print('Dashboard will auto-refresh every 3 seconds')
+        print(f'Dashboard will auto-refresh every 3 seconds')
         print('Press Ctrl+C to stop')
         server.serve_forever()
     except PermissionError:
@@ -1066,6 +1091,9 @@ def run_server(port=80):
         print('Please run with: sudo python3 monitor-dashboard.py')
     except Exception as e:
         print(f'ERROR: {e}')
+    finally:
+        if server:
+            server.server_close()
 
 if __name__ == '__main__':
     run_server()
