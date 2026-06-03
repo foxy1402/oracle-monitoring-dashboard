@@ -89,25 +89,8 @@ class MonitorHandler(BaseHTTPRequestHandler):
                 'zram': self.get_zram_info()
             }
             
-            # Disk metrics
-            disk_usage = []
-            for partition in psutil.disk_partitions():
-                try:
-                    usage = psutil.disk_usage(partition.mountpoint)
-                    if partition.mountpoint not in ['/boot/efi', '/dev', '/run']:
-                        disk_usage.append({
-                            'mountpoint': partition.mountpoint,
-                            'device': partition.device,
-                            'fstype': partition.fstype,
-                            'total': self.format_bytes(usage.total),
-                            'used': self.format_bytes(usage.used),
-                            'free': self.format_bytes(usage.free),
-                            'percent': usage.percent
-                        })
-                except PermissionError:
-                    continue
-            
-            metrics['disk'] = disk_usage
+            # Disk metrics (container-aware: uses /rootfs + /proc/1/mounts when available)
+            metrics['disk'] = self.get_disk_metrics()
             
             # Disk I/O
             try:
@@ -201,6 +184,72 @@ class MonitorHandler(BaseHTTPRequestHandler):
         except Exception:
             pass
         return 'Unknown Linux'
+
+    def get_host_root(self):
+        """Return '/rootfs' when host filesystem is bind-mounted there (container mode), else ''."""
+        return '/rootfs' if os.path.isdir('/rootfs/etc') else ''
+
+    def get_disk_metrics(self):
+        """Return host disk usage, container-aware via /proc/1/mounts + /rootfs bind-mount."""
+        disk_usage = []
+        host_root = self.get_host_root()
+
+        # Filesystem types and mount points to ignore
+        skip_fstypes = {
+            'tmpfs', 'devtmpfs', 'sysfs', 'proc', 'cgroup', 'cgroup2',
+            'devpts', 'overlay', 'aufs', 'squashfs', 'nsfs', 'fusectl',
+            'hugetlbfs', 'mqueue', 'pstore', 'securityfs', 'debugfs',
+            'tracefs', 'configfs', 'ramfs', 'bpf', 'efivarfs',
+        }
+        skip_mounts = {'/boot/efi', '/dev', '/run', '/proc', '/sys', '/rootfs'}
+
+        if host_root:
+            # Container mode: read host mounts from PID 1's mount namespace
+            try:
+                with open('/proc/1/mounts', 'r') as f:
+                    for line in f:
+                        parts = line.split()
+                        if len(parts) < 3:
+                            continue
+                        device, mountpoint, fstype = parts[0], parts[1], parts[2]
+                        if fstype in skip_fstypes or mountpoint in skip_mounts:
+                            continue
+                        try:
+                            usage = psutil.disk_usage(host_root + mountpoint)
+                            disk_usage.append({
+                                'mountpoint': mountpoint,
+                                'device': device,
+                                'fstype': fstype,
+                                'total': self.format_bytes(usage.total),
+                                'used': self.format_bytes(usage.used),
+                                'free': self.format_bytes(usage.free),
+                                'percent': usage.percent
+                            })
+                        except (PermissionError, FileNotFoundError, OSError):
+                            continue
+            except Exception:
+                pass
+
+        if not disk_usage:
+            # Bare-metal / fallback: psutil reads directly
+            for partition in psutil.disk_partitions():
+                try:
+                    if partition.mountpoint in skip_mounts:
+                        continue
+                    usage = psutil.disk_usage(partition.mountpoint)
+                    disk_usage.append({
+                        'mountpoint': partition.mountpoint,
+                        'device': partition.device,
+                        'fstype': partition.fstype,
+                        'total': self.format_bytes(usage.total),
+                        'used': self.format_bytes(usage.used),
+                        'free': self.format_bytes(usage.free),
+                        'percent': usage.percent
+                    })
+                except (PermissionError, OSError):
+                    continue
+
+        return disk_usage
 
     def get_zram_info(self):
         """Detect ZRAM swap devices from /proc/swaps"""
@@ -405,7 +454,7 @@ class MonitorHandler(BaseHTTPRequestHandler):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oracle Instance Monitor</title>
+    <title>Linux Instance Monitor</title>
     <style>
         * {
             margin: 0;
@@ -748,7 +797,7 @@ class MonitorHandler(BaseHTTPRequestHandler):
 <body>
     <div class="container">
         <div class="header">
-            <h1>Oracle Instance Monitoring Dashboard</h1>
+            <h1>Linux Instance Monitoring Dashboard</h1>
             <div class="subtitle">
                 Real-time system metrics and performance monitoring
                 <span class="refresh-indicator"></span>

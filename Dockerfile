@@ -3,8 +3,10 @@ FROM python:3.12-alpine AS builder
 RUN apk add --no-cache gcc musl-dev linux-headers
 RUN pip install --no-cache-dir --target=/deps psutil
 
-# Stage 2 — lean final image (~60 MB)
+# Stage 2 — lean final image (~65 MB)
 FROM python:3.12-alpine
+# util-linux provides the `last` command for login history
+RUN apk add --no-cache util-linux
 COPY --from=builder /deps /deps
 COPY monitor-dashboard.py /app/monitor-dashboard.py
 WORKDIR /app
