@@ -6,6 +6,8 @@ services:
     ports:
       - "80:80"
     pid: host                          # see all host processes
+    security_opt:
+      - apparmor:unconfined            # allow writes to /proc/self/attr at container start
     volumes:
       - /proc:/proc:ro                 # host CPU, memory, ZRAM, net stats
       - /sys:/sys:ro                   # host hardware info
