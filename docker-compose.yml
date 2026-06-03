@@ -5,12 +5,12 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
-    pid: host                          # see all host processes
-    security_opt:
-      - apparmor:unconfined            # allow writes to /proc/self/attr at container start
+    pid: host                          # shares host PID namespace → /proc shows all host data
     volumes:
-      - /proc:/proc:ro                 # host CPU, memory, ZRAM, net stats
-      - /sys:/sys:ro                   # host hardware info
+      # /proc is intentionally NOT bind-mounted; pid:host already exposes the
+      # host proc namespace via the container's own writable proc mount,
+      # avoiding the AppArmor-vs-read-only-/proc conflict at container init.
+      - /sys:/sys:ro
       - /etc/os-release:/etc/os-release:ro
       - /etc/hostname:/etc/hostname:ro
       - /var/log:/var/log:ro           # last login activity
