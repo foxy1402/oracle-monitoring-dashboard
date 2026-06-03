@@ -1,10 +1,37 @@
-# Oracle Instance Monitoring Dashboard
+# Linux Instance Monitoring Dashboard
 
-A comprehensive, real-time monitoring dashboard for Oracle Cloud instances running **Oracle Linux** or **Ubuntu**. Access directly via your instance IP address with no port number required.
+A comprehensive, real-time monitoring dashboard for Linux servers — works on **any Linux distribution** via Docker/Portainer, or installed directly on Oracle Linux / Ubuntu.
 
 ## ⚡ Quick Start
 
-### For Oracle Linux 8/9
+### Docker / Portainer (recommended — any Linux)
+
+Paste into Portainer **Stacks → Add stack**:
+
+```yaml
+services:
+  oracle-monitor:
+    image: ghcr.io/foxy1402/oracle-monitoring-dashboard:latest
+    container_name: oracle-monitor
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    pid: host
+    volumes:
+      - /:/rootfs:ro,rslave
+      - /sys:/sys:ro
+      - /etc/os-release:/etc/os-release:ro
+      - /etc/hostname:/etc/hostname:ro
+      - /var/log:/var/log:ro
+    cap_add:
+      - SYS_PTRACE
+```
+
+**Access at**: `http://YOUR_SERVER_IP`
+
+---
+
+### For Oracle Linux 8/9 (bare-metal / VM)
 
 ```bash
 git clone https://github.com/foxy1402/oracle-monitoring-dashboard.git
@@ -13,7 +40,7 @@ chmod +x install-monitor.sh
 sudo ./install-monitor.sh
 ```
 
-### For Ubuntu 20.04/22.04
+### For Ubuntu 20.04/22.04 (bare-metal / VM)
 
 ```bash
 git clone https://github.com/foxy1402/oracle-monitoring-dashboard.git
@@ -22,7 +49,7 @@ chmod +x install-monitor-ubuntu.sh
 sudo ./install-monitor-ubuntu.sh
 ```
 
-Then configure Oracle Cloud Security List (instructions shown during installation).
+Then configure your cloud provider firewall/security group to allow TCP port 80.
 
 **Access at**: `http://YOUR_INSTANCE_IP`
 
@@ -63,10 +90,17 @@ Then configure Oracle Cloud Security List (instructions shown during installatio
 - **No Port Number**: Access via http://YOUR_IP (runs on port 80)
 
 ### OS Compatibility
-- ✅ **Oracle Linux 8/9** (x86_64 & ARM64)
-- ✅ **Ubuntu 20.04 LTS** (x86_64 & ARM64)
-- ✅ **Ubuntu 22.04 LTS** (x86_64 & ARM64)
-- ✅ **Ubuntu Minimal** variants
+
+**Via Docker (any Linux, recommended)**
+- ✅ Any Linux distribution with Docker Engine
+- ✅ Google Cloud, AWS, Azure, Oracle Cloud, Hetzner, bare-metal…
+- ✅ amd64 and arm64 architectures
+
+**Bare-metal / VM install scripts**
+- ✅ Oracle Linux 8/9 (x86_64 & ARM64)
+- ✅ Ubuntu 20.04 LTS (x86_64 & ARM64)
+- ✅ Ubuntu 22.04 LTS (x86_64 & ARM64)
+- ✅ Ubuntu Minimal variants
 
 ## 🚀 Installation
 
@@ -130,6 +164,105 @@ The script will:
 4. Test local HTTP connection
 5. Start the monitoring service
 6. Provide Oracle Cloud Security List instructions
+
+---
+
+### Docker / Portainer Deployment
+
+The pre-built image is published to GitHub Container Registry and supports both `linux/amd64` and `linux/arm64`. No installation script or Python setup required — deploy on **any** Linux host running Docker.
+
+#### Option A — Portainer Stack (GUI)
+
+1. Open Portainer → **Stacks** → **Add stack**
+2. Give it a name (e.g. `linux-monitor`)
+3. Paste the compose below into the **Web editor**
+4. Click **Deploy the stack**
+
+```yaml
+services:
+  oracle-monitor:
+    image: ghcr.io/foxy1402/oracle-monitoring-dashboard:latest
+    container_name: oracle-monitor
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    pid: host
+    volumes:
+      - /:/rootfs:ro,rslave
+      - /sys:/sys:ro
+      - /etc/os-release:/etc/os-release:ro
+      - /etc/hostname:/etc/hostname:ro
+      - /var/log:/var/log:ro
+    cap_add:
+      - SYS_PTRACE
+```
+
+#### Option B — Docker CLI
+
+```bash
+docker run -d \
+  --name oracle-monitor \
+  --restart unless-stopped \
+  -p 80:80 \
+  --pid host \
+  -v /:/rootfs:ro,rslave \
+  -v /sys:/sys:ro \
+  -v /etc/os-release:/etc/os-release:ro \
+  -v /etc/hostname:/etc/hostname:ro \
+  -v /var/log:/var/log:ro \
+  --cap-add SYS_PTRACE \
+  ghcr.io/foxy1402/oracle-monitoring-dashboard:latest
+```
+
+#### Option C — Docker Compose CLI
+
+```bash
+# Clone just the compose file
+curl -O https://raw.githubusercontent.com/foxy1402/oracle-monitoring-dashboard/main/docker-compose.yml
+
+# Pull image and start
+docker compose up -d
+```
+
+#### Why those mounts?
+
+| Mount | Purpose |
+|---|---|
+| `/:/rootfs:ro,rslave` | Host filesystem — the script reads `/proc/1/mounts` to list real disk partitions and calls `disk_usage('/rootfs/<mountpoint>')` for accurate usage |
+| `/sys:/sys:ro` | Hardware/block device info |
+| `/etc/os-release:/etc/os-release:ro` | Shows correct OS name in the dashboard |
+| `/etc/hostname:/etc/hostname:ro` | Shows host hostname instead of container ID |
+| `/var/log:/var/log:ro` | Login history (`last` command) |
+| `pid: host` | Shares host PID namespace — psutil sees all host processes, CPU, memory, network, and swap (including ZRAM) via the container's own `/proc` |
+| `SYS_PTRACE` | Allows psutil to inspect process details |
+
+> **Note on `/proc`**: `/proc` is intentionally **not** bind-mounted. `pid: host` already makes the container's own `/proc` reflect host data, and avoids the AppArmor conflict (`/proc/self/attr/apparmor/exec` must be writable at container init).
+
+#### Managing the container
+
+```bash
+# View logs
+docker logs -f oracle-monitor
+
+# Restart
+docker restart oracle-monitor
+
+# Stop and remove
+docker stop oracle-monitor && docker rm oracle-monitor
+
+# Pull latest image and recreate
+docker pull ghcr.io/foxy1402/oracle-monitoring-dashboard:latest
+docker restart oracle-monitor
+```
+
+#### GHCR package visibility
+
+If the image pull fails with a 401/403 error, the package may still be set to private after the first push. Fix it once:
+
+1. GitHub → your profile → **Packages** → `oracle-monitoring-dashboard`
+2. **Package settings** → **Change visibility** → **Public**
+
+Or add a Portainer registry credential with a GitHub Personal Access Token (PAT) that has the `read:packages` scope.
 
 ---
 
@@ -577,13 +710,24 @@ sudo ufw delete allow 80/tcp
 A: Yes! Edit `monitor-dashboard.py`, find `run_server(port=80)` and change to your desired port. Then update firewall rules and Oracle Cloud Security List accordingly.
 
 **Q: What operating systems are supported?**  
-A: Oracle Linux 8/9 and Ubuntu 20.04/22.04 (including Minimal variants) on both x86_64 and ARM64 architectures.
+A: Via Docker — any Linux distribution (Debian, Ubuntu, CentOS, Fedora, Alpine, GCP/AWS/Azure images, etc.) on amd64 or arm64. For bare-metal install scripts: Oracle Linux 8/9 and Ubuntu 20.04/22.04.
 
 **Q: Can multiple people view the dashboard simultaneously?**  
 A: Yes! Each browser session is independent. The dashboard handles multiple concurrent viewers.
 
 **Q: Does this work on other cloud providers?**  
-A: Yes! It works on any Linux server with Python 3 and systemd. Just adjust the firewall configuration for your provider.
+A: Yes! Via Docker it works on Google Cloud, AWS, Azure, Hetzner, DigitalOcean, or any Linux host. Just open TCP port 80 in your provider's firewall/security group.
+
+**Q: How do I update the Docker image?**  
+A: The `:latest` image is rebuilt automatically on every push to `main`. To update your running container:
+```bash
+docker pull ghcr.io/foxy1402/oracle-monitoring-dashboard:latest
+docker restart oracle-monitor
+```
+In Portainer: **Stacks → your stack → Editor → Update the stack** (or use the **Recreate** button on the container).
+
+**Q: Can I run it on a different port?**  
+A: Yes — change the left side of the port mapping: `-p 8080:80` exposes it on host port 8080.
 
 **Q: Which firewall systems are supported?**  
 A: Both firewalld (Oracle Linux, RHEL, CentOS) and UFW (Ubuntu, Debian) are automatically detected and configured.
@@ -631,9 +775,15 @@ This monitoring dashboard is provided as-is for Oracle Cloud instance monitoring
 
 ```
 oracle-monitoring-dashboard/
-├── monitor-dashboard.py          # Main dashboard (works on all supported OS)
-├── install-monitor.sh            # Oracle Linux installer
-├── install-monitor-ubuntu.sh     # Ubuntu installer  
+├── monitor-dashboard.py          # Main dashboard (bare-metal + container compatible)
+├── Dockerfile                    # Multi-stage Alpine build (~65 MB image)
+├── docker-compose.yml            # Portainer/Docker Compose deployment
+├── requirements.txt              # Python dependencies (psutil)
+├── .github/
+│   └── workflows/
+│       └── docker-publish.yml   # CI: builds & pushes :latest to GHCR on every push
+├── install-monitor.sh            # Oracle Linux bare-metal installer
+├── install-monitor-ubuntu.sh     # Ubuntu bare-metal installer
 ├── update.sh                     # Oracle Linux updater
 ├── update-ubuntu.sh              # Ubuntu updater
 └── README.md                     # This file
@@ -641,18 +791,19 @@ oracle-monitoring-dashboard/
 
 ## 🌟 Credits
 
-Built specifically for Oracle Cloud Infrastructure monitoring with focus on:
+Built for Linux infrastructure monitoring with focus on:
 - ✅ Real-time performance tracking
 - ✅ Security and privacy (XSS protection, input sanitization)
-- ✅ Multi-OS support (Oracle Linux + Ubuntu)
-- ✅ Ease of use (one-command installation)
-- ✅ No external dependencies
-- ✅ Lightweight resource usage (~1-2% CPU, ~30-50MB RAM)
+- ✅ Universal Linux support via Docker (any distro, amd64 + arm64)
+- ✅ Bare-metal install for Oracle Linux and Ubuntu
+- ✅ Lightweight Docker image (~65 MB, Alpine-based)
+- ✅ Lightweight resource usage (~1-2% CPU, ~30-50 MB RAM)
+- ✅ Zero configuration — no env vars required
 
 ---
 
 **Repository**: https://github.com/foxy1402/oracle-monitoring-dashboard
 
-**Access your dashboard**: `http://YOUR_INSTANCE_IP`
+**Docker image**: `ghcr.io/foxy1402/oracle-monitoring-dashboard:latest`
 
-**Made with ❤️ for Oracle Cloud users running Oracle Linux or Ubuntu**
+**Access your dashboard**: `http://YOUR_SERVER_IP`
