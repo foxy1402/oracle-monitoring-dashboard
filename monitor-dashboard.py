@@ -85,7 +85,8 @@ class MonitorHandler(BaseHTTPRequestHandler):
                 'percent': mem.percent,
                 'swap_total': self.format_bytes(swap.total),
                 'swap_used': self.format_bytes(swap.used),
-                'swap_percent': swap.percent
+                'swap_percent': swap.percent,
+                'zram': self.get_zram_info()
             }
             
             # Disk metrics
@@ -200,6 +201,27 @@ class MonitorHandler(BaseHTTPRequestHandler):
         except Exception:
             pass
         return 'Unknown Linux'
+
+    def get_zram_info(self):
+        """Detect ZRAM swap devices from /proc/swaps"""
+        zram_devices = []
+        try:
+            with open('/proc/swaps', 'r') as f:
+                lines = f.readlines()[1:]  # skip header
+                for line in lines:
+                    parts = line.split()
+                    if parts and 'zram' in parts[0].lower():
+                        size_kb = int(parts[2]) if len(parts) > 2 else 0
+                        used_kb = int(parts[3]) if len(parts) > 3 else 0
+                        zram_devices.append({
+                            'device': parts[0],
+                            'total': self.format_bytes(size_kb * 1024),
+                            'used': self.format_bytes(used_kb * 1024),
+                            'percent': round((used_kb / size_kb * 100), 1) if size_kb > 0 else 0
+                        })
+        except Exception:
+            pass
+        return zram_devices
     
     def get_wireguard_status(self):
         """Get WireGuard VPN status"""
@@ -553,23 +575,42 @@ class MonitorHandler(BaseHTTPRequestHandler):
             width: 100%;
             font-size: 13px;
             margin-top: 10px;
+            table-layout: fixed;
+            border-collapse: collapse;
         }
         
         .process-table th {
             text-align: left;
-            padding: 8px 4px;
+            padding: 8px 6px;
             color: #666;
             font-weight: 600;
             border-bottom: 2px solid #e5e7eb;
+            vertical-align: bottom;
+            overflow: hidden;
         }
         
         .process-table td {
-            padding: 8px 4px;
+            padding: 8px 6px;
             border-bottom: 1px solid #f3f4f6;
+            vertical-align: top;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         
         .process-table tr:last-child td {
             border-bottom: none;
+        }
+        
+        .process-table col.col-pid        { width: 7%; }
+        .process-table col.col-name       { width: 35%; }
+        .process-table col.col-user       { width: 26%; }
+        .process-table col.col-cpu        { width: 16%; }
+        .process-table col.col-mem        { width: 16%; }
+        
+        .process-table th.align-right,
+        .process-table td.align-right {
+            text-align: right;
         }
         
         .disk-item {
@@ -838,6 +879,23 @@ class MonitorHandler(BaseHTTPRequestHandler):
                         <div class="progress-fill ${getProgressClass(data.memory.swap_percent)}" 
                              style="width: ${data.memory.swap_percent}%"></div>
                     </div>
+                    
+                    ${data.memory.zram && data.memory.zram.length > 0 ? data.memory.zram.map(z => `
+                    <div style="margin-top: 15px;">
+                        <div class="metric-row">
+                            <span class="metric-label">ZRAM <span style="font-size:11px;color:#888;">${z.device}</span></span>
+                            <span class="metric-value">${z.used} / ${z.total}</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill ${getProgressClass(z.percent)}" 
+                                 style="width: ${z.percent}%"></div>
+                        </div>
+                        <div class="metric-row" style="margin-top: 5px;">
+                            <span class="metric-label">Compressed swap (in RAM)</span>
+                            <span class="metric-value">${z.percent}%</span>
+                        </div>
+                    </div>
+                    `).join('') : ''}
                 </div>
             `;
             
@@ -1012,23 +1070,30 @@ class MonitorHandler(BaseHTTPRequestHandler):
                 <div class="card" style="margin-bottom: 20px;">
                     <h2>Top Processes by CPU Usage</h2>
                     <table class="process-table">
+                        <colgroup>
+                            <col class="col-pid">
+                            <col class="col-name">
+                            <col class="col-user">
+                            <col class="col-cpu">
+                            <col class="col-mem">
+                        </colgroup>
                         <thead>
                             <tr>
                                 <th>PID</th>
                                 <th>Process Name</th>
                                 <th>User</th>
-                                <th>CPU %</th>
-                                <th>Memory %</th>
+                                <th class="align-right">CPU %</th>
+                                <th class="align-right">Memory %</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${data.top_processes.slice(0, 10).map(proc => `
                                 <tr>
                                     <td>${proc.pid}</td>
-                                    <td>${proc.name}</td>
-                                    <td>${proc.username}</td>
-                                    <td>${proc.cpu_percent.toFixed(1)}%</td>
-                                    <td>${proc.memory_percent.toFixed(1)}%</td>
+                                    <td title="${proc.name}">${proc.name}</td>
+                                    <td title="${proc.username}">${proc.username}</td>
+                                    <td class="align-right">${proc.cpu_percent.toFixed(1)}%</td>
+                                    <td class="align-right">${proc.memory_percent.toFixed(1)}%</td>
                                 </tr>
                             `).join('')}
                         </tbody>

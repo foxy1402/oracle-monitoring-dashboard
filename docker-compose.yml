@@ -1,0 +1,16 @@
+services:
+  oracle-monitor:
+    image: ghcr.io/foxy1402/oracle-monitoring-dashboard:latest
+    container_name: oracle-monitor
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    pid: host                          # see all host processes
+    volumes:
+      - /proc:/proc:ro                 # host CPU, memory, ZRAM, net stats
+      - /sys:/sys:ro                   # host hardware info
+      - /etc/os-release:/etc/os-release:ro
+      - /etc/hostname:/etc/hostname:ro
+      - /var/log:/var/log:ro           # last login activity
+    cap_add:
+      - SYS_PTRACE                     # psutil process inspection
