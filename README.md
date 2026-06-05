@@ -62,18 +62,20 @@ Then configure your cloud provider firewall/security group to allow TCP port 80.
 - **Disk I/O**: Read/write statistics and operation counts
 
 ### Network Monitoring
-- **Network Statistics**: Data sent/received, packets, errors, and drops
+- **Live Throughput**: Real-time RX/TX bandwidth (KB/s or MB/s) updated every 3 s
+- **Host-scoped Counters**: Docker image reads `/proc/1/net/dev` (host network namespace) — shows real interface traffic, not just the container veth pair
+- **Per-interface Breakdown**: Cumulative bytes/packets per physical NIC
 - **Active Connections**: Established, listening, and time-wait connections
-- **Connection Details**: Real-time network connection tracking
 
 ### Process Monitoring
-- **Top Processes**: Top 10 processes by CPU usage
-- **Process Details**: PID, name, user, CPU%, and memory%
+- **Top Processes**: Top 15 host processes by CPU usage (all host PIDs visible via `pid: host`)
+- **Process Details**: PID, process name, full command line, user, CPU%, and memory%
 
 ### Service Monitoring
-- **SSH Service**: Status of SSH daemon
-- **Firewall**: Detects both firewalld (Oracle Linux) and UFW (Ubuntu)
-- **WireGuard VPN**: Connection status and active peers (if installed)
+- **Auto-detected Services**: Scans host listening sockets (`/proc/1/net/tcp`, `tcp6`, `udp`, `udp6`) — no systemd required, works on any Linux distro
+- **Port → Service mapping**: 45+ well-known ports mapped to friendly names (SSH, HTTP, MySQL, Redis, WireGuard, etc.)
+- **Firewall**: Detects both firewalld (Oracle Linux) and UFW (Ubuntu) when present
+- **WireGuard VPN**: Detected via `wg*` network interfaces — no `wg` binary required
 
 ### Security Features
 - **Read-only Dashboard**: No buttons or forms that execute commands
@@ -233,7 +235,7 @@ docker compose up -d
 | `/etc/os-release:/etc/os-release:ro` | Shows correct OS name in the dashboard |
 | `/etc/hostname:/etc/hostname:ro` | Shows host hostname instead of container ID |
 | `/var/log:/var/log:ro` | Login history (`last` command) |
-| `pid: host` | Shares host PID namespace — psutil sees all host processes, CPU, memory, network, and swap (including ZRAM) via the container's own `/proc` |
+| `pid: host` | Shares host PID namespace — psutil sees **all host processes** via `/proc`; also exposes `/proc/1/net/dev` (host NIC stats) and `/proc/1/net/tcp*` (host listening ports) for accurate network and service detection |
 | `SYS_PTRACE` | Allows psutil to inspect process details |
 
 > **Note on `/proc`**: `/proc` is intentionally **not** bind-mounted. `pid: host` already makes the container's own `/proc` reflect host data, and avoids the AppArmor conflict (`/proc/self/attr/apparmor/exec` must be writable at container init).
@@ -330,9 +332,11 @@ The dashboard displays:
    - Device and filesystem type
 
 6. **Network Statistics Card**
-   - Total data sent/received
-   - Packet counts
-   - Network errors and drops
+   - **Live throughput**: real-time Download (RX) and Upload (TX) speed
+   - Source badge: **host** (green) = reading from host NIC, **container** (yellow) = fallback
+   - Cumulative total sent/received since boot
+   - Packet counts, errors, and drops
+   - Per-interface breakdown (each physical NIC listed separately)
 
 7. **Disk I/O Statistics Card**
    - Total bytes read/written
@@ -344,10 +348,11 @@ The dashboard displays:
    - Time-wait connections
    - Total connections
 
-9. **Service Status Card**
-   - SSH daemon status
-   - Firewall status and open ports
-   - WireGuard VPN status (if installed)
+9. **Detected Services Card**
+   - Auto-detected from host listening sockets — no systemd or service manager required
+   - Table of Port / Protocol / Service name for every bound socket
+   - Works identically on any Linux distribution
+   - Firewall status shown when firewalld or UFW is active
 
 10. **WireGuard VPN Card** (if installed)
     - VPN service status
@@ -355,8 +360,10 @@ The dashboard displays:
     - Active peer details with transfer stats
 
 11. **Top Processes Card**
-    - Top 10 processes by CPU usage
-    - Process details (PID, name, user, CPU%, memory%)
+    - Top 15 host processes by CPU usage (table always populated — no empty first-load)
+    - Process name (bold) + full command line for easy identification
+    - PID, user, CPU%, memory% columns
+    - CPU% values become accurate from the second refresh onward (psutil baseline)
 
 12. **Recent Login Activity Card**
     - Last 5 login events
@@ -756,6 +763,7 @@ For issues or questions:
 
 ## 🐛 Recent Bug Fixes
 
+
 ### Critical Security Fixes Applied
 
 1. **XSS Vulnerability** - All user input now properly sanitized with HTML escaping
@@ -775,8 +783,9 @@ This monitoring dashboard is provided as-is for Oracle Cloud instance monitoring
 
 ```
 oracle-monitoring-dashboard/
-├── monitor-dashboard.py          # Main dashboard (bare-metal + container compatible)
-├── Dockerfile                    # Multi-stage Alpine build (~65 MB image)
+├── monitor-dashboard.py          # Bare-metal dashboard (Oracle Linux / Ubuntu install scripts)
+├── monitor-dashboard-docker.py   # Docker/GHCR edition (host /proc/1/net/*, port-based services)
+├── Dockerfile                    # Multi-stage Alpine build — copies monitor-dashboard-docker.py
 ├── docker-compose.yml            # Portainer/Docker Compose deployment
 ├── requirements.txt              # Python dependencies (psutil)
 ├── .github/

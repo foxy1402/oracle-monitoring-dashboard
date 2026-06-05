@@ -8,7 +8,9 @@ FROM python:3.12-alpine
 # util-linux provides the `last` command for login history
 RUN apk add --no-cache util-linux
 COPY --from=builder /deps /deps
-COPY monitor-dashboard.py /app/monitor-dashboard.py
+# Use the Docker-specific dashboard (reads /proc/1/net/dev, port-based service
+# detection, fixed process listing) instead of the bare-metal install version.
+COPY monitor-dashboard-docker.py /app/monitor-dashboard.py
 WORKDIR /app
 ENV PYTHONPATH=/deps
 EXPOSE 80
