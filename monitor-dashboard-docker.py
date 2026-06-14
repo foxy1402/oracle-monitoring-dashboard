@@ -913,6 +913,17 @@ class MonitorHandler(BaseHTTPRequestHandler):
         .iface-name { font-family:monospace; font-weight:600; color:#1e3c72; min-width:60px; }
         .iface-stat { color:#555; }
 
+        /* ── Interface groups ── */
+        .iface-group { margin-bottom:8px; }
+        .iface-group-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:#888; padding:4px 0 2px; }
+        .iface-group details { margin:0; }
+        .iface-group summary { font-size:12px; font-weight:600; color:#1e3c72; cursor:pointer; padding:6px 8px; background:#f0f4f8; border-radius:4px; list-style:none; display:flex; align-items:center; gap:6px; }
+        .iface-group summary::-webkit-details-marker { display:none; }
+        .iface-group summary::before { content:'▶'; font-size:9px; transition:transform 0.15s; }
+        .iface-group details[open] summary::before { transform:rotate(90deg); }
+        .iface-group summary .iface-summary-stats { margin-left:auto; font-weight:400; color:#555; font-size:11px; }
+        .iface-group .iface-group-body { padding:4px 0 0 8px; }
+
         /* ── WireGuard ── */
         .wireguard-peer { background:#f9fafb; padding:12px; border-radius:6px; margin-bottom:10px; }
         .wireguard-peer:last-child { margin-bottom:0; }
@@ -1079,11 +1090,28 @@ class MonitorHandler(BaseHTTPRequestHandler):
 
             ${d.network.interfaces.length > 0 ? `
             <div class="section-label">Per Interface</div>
-            ${d.network.interfaces.map(iface => `
-            <div class="iface-row">
-                <span class="iface-name">${iface.name}</span>
-                <span class="iface-stat">&#8595; ${iface.bytes_recv} &nbsp; &#8593; ${iface.bytes_sent}</span>
-            </div>`).join('')}` : ''}
+            ${(() => {
+                const dockerRe = /^(docker|br-|veth)/;
+                const sys = [], dkr = [];
+                d.network.interfaces.forEach(i => (dockerRe.test(i.name) ? dkr : sys).push(i));
+                const row = i => '<div class="iface-row"><span class="iface-name">' + i.name + '</span><span class="iface-stat">&#8595; ' + i.bytes_recv + ' &nbsp; &#8593; ' + i.bytes_sent + '</span></div>';
+                let out = '<div class="iface-group">';
+                sys.forEach(i => { out += row(i); });
+                if (dkr.length > 0) {
+                    let drx = 0, dtx = 0;
+                    dkr.forEach(i => {
+                        const parseVal = s => { const m = s.match(/([\d.]+)\s*(\w+)/); if(!m) return 0; const v=parseFloat(m[1]), u=m[2].toUpperCase(); const mul={B:1,KB:1024,MB:1048576,GB:1073741824,TB:1099511627776}; return v*(mul[u]||1); };
+                        drx += parseVal(i.bytes_recv);
+                        dtx += parseVal(i.bytes_sent);
+                    });
+                    const fmtBytes = b => { if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(1)+' KB'; if(b<1073741824) return (b/1048576).toFixed(1)+' MB'; if(b<1099511627776) return (b/1073741824).toFixed(1)+' GB'; return (b/1099511627776).toFixed(1)+' TB'; };
+                    out += '<details><summary>Docker <span style="font-weight:400;color:#888">(' + dkr.length + ' interfaces)</span><span class="iface-summary-stats">&#8595; ' + fmtBytes(drx) + ' &nbsp; &#8593; ' + fmtBytes(dtx) + '</span></summary><div class="iface-group-body">';
+                    dkr.forEach(i => { out += row(i); });
+                    out += '</div></details>';
+                }
+                out += '</div>';
+                return out;
+            })()}` : ''}
         </div>`;
 
         // ── Disk I/O ─────────────────────────────────────────────────────────
