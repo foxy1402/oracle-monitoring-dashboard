@@ -4,7 +4,9 @@ services:
     container_name: oracle-monitor
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "${PORT:-8080}:${PORT:-8080}"
+    environment:
+      - PORT=${PORT:-8080}
     pid: host                          # shares host PID namespace → /proc shows all host data
     volumes:
       - /:/rootfs:ro,rslave            # host filesystem → real disk usage via /proc/1/mounts

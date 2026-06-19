@@ -1280,7 +1280,7 @@ class MonitorHandler(BaseHTTPRequestHandler):
 # =============================================================================
 
 
-def run_server(port: int = 80) -> None:
+def run_server(port: int = 8080) -> None:
     server = None
 
     def _shutdown(sig, frame):
@@ -1296,7 +1296,8 @@ def run_server(port: int = 80) -> None:
         server = ThreadingHTTPServer(("0.0.0.0", port), MonitorHandler)
         server.timeout = 10
         print(f"Oracle Monitoring Dashboard (Docker edition) running on port {port}")
-        print(f"Access at http://<host-ip>")
+        port_suffix = "" if port == 8080 else f":{port}"
+        print(f"Access at http://<host-ip>{port_suffix}")
         print("Auto-refreshes every 3 seconds.  Press Ctrl+C to stop.")
         server.serve_forever()
     except PermissionError:
@@ -1310,4 +1311,14 @@ def run_server(port: int = 80) -> None:
 
 
 if __name__ == "__main__":
-    run_server()
+    port = 8080
+    raw_port = os.environ.get("PORT", "").strip()
+    if raw_port:
+        try:
+            port = int(raw_port)
+            if not (1 <= port <= 65535):
+                raise ValueError
+        except ValueError:
+            print(f"ERROR: invalid PORT env var: {raw_port!r} (must be 1-65535)")
+            sys.exit(2)
+    run_server(port)

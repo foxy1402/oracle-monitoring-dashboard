@@ -13,5 +13,6 @@ COPY --from=builder /deps /deps
 COPY monitor-dashboard-docker.py /app/monitor-dashboard.py
 WORKDIR /app
 ENV PYTHONPATH=/deps
-EXPOSE 80
+ENV PORT=8080
+EXPOSE 8080
 CMD ["python", "-u", "monitor-dashboard.py"]

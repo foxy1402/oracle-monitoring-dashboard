@@ -15,7 +15,9 @@ services:
     container_name: oracle-monitor
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "${PORT:-8080}:${PORT:-8080}"
+    environment:
+      - PORT=${PORT:-8080}
     pid: host
     volumes:
       - /:/rootfs:ro,rslave
@@ -27,7 +29,7 @@ services:
       - SYS_PTRACE
 ```
 
-**Access at**: `http://YOUR_SERVER_IP`
+**Access at**: `http://YOUR_SERVER_IP:8080` (or whatever `PORT` you set)
 
 ---
 
@@ -49,7 +51,7 @@ chmod +x install-monitor-ubuntu.sh
 sudo ./install-monitor-ubuntu.sh
 ```
 
-Then configure your cloud provider firewall/security group to allow TCP port 80.
+Then configure your cloud provider firewall/security group to allow the dashboard port (port 80 for the bare-metal script).
 
 **Access at**: `http://YOUR_INSTANCE_IP`
 
@@ -89,7 +91,7 @@ Then configure your cloud provider firewall/security group to allow TCP port 80.
 - **Responsive Design**: Works on desktop, tablet, and mobile
 - **Clean Interface**: Professional, easy-to-read metrics
 - **Color-coded Alerts**: Visual warnings for high resource usage
-- **No Port Number**: Access via http://YOUR_IP (runs on port 80)
+- **No Port Number**: Access via http://YOUR_IP:8080 (default port 8080, override with `PORT` env var)
 
 ### OS Compatibility
 
@@ -187,7 +189,9 @@ services:
     container_name: oracle-monitor
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "${PORT:-8080}:${PORT:-8080}"
+    environment:
+      - PORT=${PORT:-8080}
     pid: host
     volumes:
       - /:/rootfs:ro,rslave
@@ -199,13 +203,16 @@ services:
       - SYS_PTRACE
 ```
 
+> **Custom port**: set `PORT` in your `.env` (or `export PORT=9000` before `docker compose up`) to change both the host mapping and the container listening port. For Portainer, define it under **Stacks → Environment variables**.
+
 #### Option B — Docker CLI
 
 ```bash
 docker run -d \
   --name oracle-monitor \
   --restart unless-stopped \
-  -p 80:80 \
+  -e PORT=8080 \
+  -p 8080:8080 \
   --pid host \
   -v /:/rootfs:ro,rslave \
   -v /sys:/sys:ro \
@@ -281,7 +288,7 @@ Or add a Portainer registry credential with a GitHub Personal Access Token (PAT)
    - **Source Type**: CIDR
    - **Source CIDR**: `0.0.0.0/0`
    - **IP Protocol**: TCP
-   - **Destination Port Range**: `80`
+   - **Destination Port Range**: `8080`
    - **Description**: Oracle Monitoring Dashboard
 7. Click **Add Ingress Rules**
 
@@ -293,10 +300,10 @@ Or add a Portainer registry credential with a GitHub Personal Access Token (PAT)
 
 Simply open a web browser and navigate to:
 ```
-http://YOUR_INSTANCE_IP
+http://YOUR_INSTANCE_IP:8080
 ```
 
-No port number needed! The dashboard runs on port 80 (default HTTP).
+Default port is **8080** (avoids clashing with nginx/Apache on port 80). Override it with the `PORT` environment variable on the container.
 
 ### What You'll See
 
@@ -734,7 +741,7 @@ docker restart oracle-monitor
 In Portainer: **Stacks → your stack → Editor → Update the stack** (or use the **Recreate** button on the container).
 
 **Q: Can I run it on a different port?**  
-A: Yes — change the left side of the port mapping: `-p 8080:80` exposes it on host port 8080.
+A: Yes — set the `PORT` environment variable. For Compose: `PORT=9000 docker compose up -d`. For `docker run`: `-e PORT=9000 -p 9000:9000`. Both the host mapping and the container listening port follow `PORT`.
 
 **Q: Which firewall systems are supported?**  
 A: Both firewalld (Oracle Linux, RHEL, CentOS) and UFW (Ubuntu, Debian) are automatically detected and configured.
